@@ -3,76 +3,78 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Film Roll Memory v2</title>
+    <title>My Film Memory v3 - Cinema Edition</title>
     <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@300;400;700&display=swap" rel="stylesheet">
     <style>
         body {
             margin: 0;
             padding: 0;
-            background-color: #f5f5f0; /* 明亮背景 */
+            background-color: #f4f4f4;
             font-family: 'Gaegu', cursive;
             display: flex;
             flex-direction: column;
             align-items: center;
             height: 100vh;
             overflow: hidden;
-            transition: background-color 0.8s ease;
+            transition: background-color 1s ease;
         }
 
-        /* 投影模式：暗房風格 */
+        /* 投影模式下的背景 - 深色暗房 */
         body.projection-mode {
-            background-color: #111; 
+            background-color: #050505; 
         }
 
         header {
-            margin-top: 15px;
+            position: absolute;
+            top: 20px;
             text-align: center;
-            z-index: 10;
-            transition: opacity 0.3s;
-        }
-        
-        /* 投影模式下隱藏標題，專注看照片 */
-        body.projection-mode header {
-            opacity: 0.3; 
+            z-index: 100;
+            width: 100%;
+            pointer-events: none; /* 讓點擊可以穿透到 Canvas */
+            transition: opacity 0.5s;
         }
 
-        h1 {
-            color: #555;
-            margin: 0 0 10px 0;
-            transition: color 0.5s;
+        body.projection-mode header {
+            opacity: 0.2; /* 投影時淡化介面 */
         }
         
-        body.projection-mode h1 { color: #888; }
+        /* 滑鼠移上去時顯示介面 */
+        body.projection-mode header:hover {
+            opacity: 1;
+        }
 
         .controls {
-            display: flex;
+            pointer-events: auto;
+            display: inline-flex;
             flex-wrap: wrap;
-            gap: 10px;
+            gap: 12px;
             justify-content: center;
+            align-items: center;
             background: rgba(255, 255, 255, 0.9);
-            padding: 8px 15px;
-            border-radius: 30px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            padding: 10px 20px;
+            border-radius: 40px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            backdrop-filter: blur(5px);
         }
 
         button, label {
             font-family: 'Gaegu', cursive;
             font-size: 1.1rem;
-            padding: 6px 12px;
-            border: 2px solid #444;
+            padding: 5px 15px;
+            border: 2px solid #333;
             background: white;
             cursor: pointer;
-            border-radius: 15px;
+            border-radius: 20px;
             color: #333;
             transition: all 0.2s;
-            user-select: none;
+            font-weight: bold;
         }
 
         button:hover, label:hover {
-            background: #ffeb3b;
-            transform: translateY(-2px);
+            background: #ffe082;
+            transform: scale(1.05);
         }
-
+        
         button.active {
             background: #ff6b6b;
             color: white;
@@ -81,52 +83,69 @@
 
         input[type="file"] { display: none; }
 
-        #canvas-container {
-            flex-grow: 1;
-            width: 100%;
-            position: relative;
-            cursor: grab;
+        /* 速度控制條樣式 */
+        .speed-control {
             display: flex;
-            justify-content: center;
             align-items: center;
+            gap: 5px;
+            font-size: 1rem;
+            color: #555;
+            border: 2px solid #ddd;
+            padding: 5px 10px;
+            border-radius: 20px;
+        }
+        
+        input[type="range"] {
+            width: 100px;
+            accent-color: #ff6b6b;
         }
 
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            cursor: grab;
+        }
         #canvas-container:active { cursor: grabbing; }
-        
-        /* 調整模式下的游標 */
         #canvas-container.editing-mode { cursor: move; }
 
         .tip {
             position: absolute;
-            bottom: 20px;
+            bottom: 30px;
+            width: 100%;
+            text-align: center;
             color: #888;
-            font-size: 1rem;
+            font-size: 1.2rem;
             pointer-events: none;
-            transition: color 0.5s;
+            z-index: 50;
         }
-        body.projection-mode .tip { color: #444; }
     </style>
 </head>
 <body>
 
     <header>
-        <h1>My Film Roll v2 🎞️</h1>
         <div class="controls">
-            <label for="upload">📷 1. 上傳 (Upload)</label>
+            <label for="upload">📷 上傳照片</label>
             <input type="file" id="upload" multiple accept="image/*">
             
-            <button id="adjustBtn">🖐️ 2. 調整相片位置 (Move Photo)</button>
-            <button id="toggleMode">✨ 3. 投影模式 (Project)</button>
-            <button id="recordBtn">🎥 4. 匯出影片 (Export)</button>
-            <button id="resetBtn">↺ 重置 (Reset)</button>
+            <button id="adjustBtn">🖐️ 調整位置</button>
+            <button id="toggleMode">📽️ 投影模式</button>
+            
+            <div class="speed-control">
+                <span>速度:</span>
+                <input type="range" id="speedSlider" min="1" max="20" value="3">
+            </div>
+
+            <button id="recordBtn">🔴 錄製影片</button>
+            <button id="resetBtn">↺</button>
         </div>
     </header>
 
     <div id="canvas-container">
         <canvas id="filmCanvas"></canvas>
     </div>
-
-    <div class="tip" id="statusText">拖曳膠捲 / Drag film strip</div>
+    
+    <div class="tip" id="statusText">請上傳照片 / Please Upload Photos</div>
 
     <script>
         const canvas = document.getElementById('filmCanvas');
@@ -134,28 +153,33 @@
         const container = document.getElementById('canvas-container');
         const statusText = document.getElementById('statusText');
         
-        // 狀態變數
-        let imagesData = []; // 結構: { img: Image, x: 0, y: 0, scale: 1 }
+        // --- 核心變數 ---
+        let imagesData = [];
         let isProjection = false;
         let isAdjustMode = false;
         
-        // 互動變數
-        let filmOffsetX = 200; // 膠捲整體位置 (起始點設在底片殼右邊)
+        // 互動與位置
+        let filmOffsetX = 250; // 膠捲起始位置 (從殼口出來)
         let isDragging = false;
-        let lastX = 0;
-        let lastY = 0;
+        let lastX = 0, lastY = 0;
         
-        // 參數設定
-        const filmY = 100; // 膠捲垂直位置
-        const filmHeight = 360;
-        const photoSize = 250;
-        const gap = 30; 
-        const padding = (filmHeight - photoSize) / 2; // 上下黑邊寬度
+        // 動畫/錄影控制
+        let animationId = null;
+        let isRecording = false;
+        let autoScrollSpeed = 3;
         
-        // 初始化
+        // --- 外觀參數 ---
+        const filmY = window.innerHeight / 2; // 垂直置中
+        const filmHeight = 320;
+        const photoSize = 220; // 照片格大小
+        const gap = 35; // 照片間距
+        const padding = (filmHeight - photoSize) / 2;
+        const canisterWidth = 90; // 底片殼寬度
+        
+        // 初始化 Canvas
         function resizeCanvas() {
             canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight * 0.8; // 佔據 80% 高度
+            canvas.height = window.innerHeight;
             draw();
         }
         window.addEventListener('resize', resizeCanvas);
@@ -166,194 +190,247 @@
             const files = Array.from(e.target.files);
             if(files.length === 0) return;
             
-            imagesData = []; // 清空舊圖
+            // 保持現有照片，追加新的 (或者重置，這裡選擇重置)
+            imagesData = []; 
             let loaded = 0;
             
             files.forEach(file => {
                 const img = new Image();
                 img.src = URL.createObjectURL(file);
                 img.onload = () => {
-                    // 計算初始縮放比例以填滿框框 (Cover 模式)
+                    // Cover 模式比例計算
                     const scale = Math.max(photoSize / img.width, photoSize / img.height);
-                    
                     imagesData.push({
                         img: img,
                         scale: scale,
-                        x: (photoSize - img.width * scale) / 2, // 置中
+                        x: (photoSize - img.width * scale) / 2,
                         y: (photoSize - img.height * scale) / 2
                     });
                     
                     loaded++;
                     if(loaded === files.length) {
-                        filmOffsetX = 220; // 重置到底片殼口
+                        filmOffsetX = 250; 
+                        statusText.innerText = "左右拖曳膠捲 / Drag to scroll";
                         draw();
                     }
                 };
             });
         });
 
-        // 2. 繪製邏輯
+        // 2. 速度控制
+        const speedSlider = document.getElementById('speedSlider');
+        speedSlider.addEventListener('input', (e) => {
+            autoScrollSpeed = parseInt(e.target.value);
+        });
+
+        // ==========================================
+        //        核心繪圖引擎 (Render Engine)
+        // ==========================================
         function draw() {
-            // 清空畫面
+            // 清空畫布
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             
-            const totalFilmWidth = imagesData.length * (photoSize + gap) + 100;
+            // 垂直置中參數
+            const cy = canvas.height / 2; 
+            const topY = cy - filmHeight / 2;
 
-            // 存檔狀態
+            // 計算目前哪張照片在畫面正中央 (用於投影)
+            let centerIndex = -1;
+            if (imagesData.length > 0) {
+                // 算法：(螢幕中心 - 膠捲偏移) / 單格寬度
+                const screenCenter = canvas.width / 2;
+                // 稍微修正 250 是底片殼偏移
+                centerIndex = Math.floor((screenCenter - filmOffsetX) / (photoSize + gap));
+                // 邊界檢查
+                if (centerIndex < 0) centerIndex = 0;
+                if (centerIndex >= imagesData.length) centerIndex = imagesData.length - 1;
+            }
+
+            // --- A. 背景投影層 (Background Projection) ---
+            if (isProjection && centerIndex !== -1 && imagesData[centerIndex]) {
+                const bgImg = imagesData[centerIndex].img;
+                
+                ctx.save();
+                // 1. 繪製全版背景模糊圖
+                ctx.filter = 'blur(20px) brightness(0.4)';
+                // 保持比例填滿背景
+                const bgScale = Math.max(canvas.width / bgImg.width, canvas.height / bgImg.height);
+                const bw = bgImg.width * bgScale;
+                const bh = bgImg.height * bgScale;
+                const bx = (canvas.width - bw) / 2;
+                const by = (canvas.height - bh) / 2;
+                ctx.drawImage(bgImg, bx, by, bw, bh);
+
+                // 2. 繪製底部打光效果 (Light Beam)
+                ctx.filter = 'none'; // 關閉濾鏡畫漸層
+                const gradient = ctx.createLinearGradient(0, canvas.height, 0, cy);
+                gradient.addColorStop(0, "rgba(255, 255, 255, 0.4)"); // 底部光亮
+                gradient.addColorStop(1, "rgba(255, 255, 255, 0)");   // 頂部透明
+                
+                ctx.globalCompositeOperation = 'overlay';
+                ctx.fillStyle = gradient;
+                // 畫梯形光束
+                ctx.beginPath();
+                ctx.moveTo(canvas.width * 0.2, canvas.height);
+                ctx.lineTo(canvas.width * 0.8, canvas.height);
+                ctx.lineTo(canvas.width * 0.6, cy);
+                ctx.lineTo(canvas.width * 0.4, cy);
+                ctx.fill();
+                
+                ctx.restore();
+            }
+
+            // --- B. 膠捲圖層 (Film Strip) ---
+            // 儲存狀態，準備移動座標
             ctx.save();
-            
-            // --- A. 繪製底片殼 (Canister) - 永遠固定在左側 ---
-            // 為了讓底片看起來是從下面穿過去，我們先不畫殼，最後再畫殼蓋住
-            
-            // 移動座標系來畫膠捲
-            // 膠捲的位置由 filmOffsetX 決定
-            ctx.translate(filmOffsetX, (canvas.height - filmHeight) / 2);
+            ctx.translate(filmOffsetX, topY);
 
-            // --- B. 投影光暈 (Glow Layer) - 僅在投影模式 ---
-            if (isProjection) {
-                imagesData.forEach((data, i) => {
-                    const x = i * (photoSize + gap) + 50;
-                    ctx.save();
-                    // 這裡使用高斯模糊來模擬光線投射
-                    ctx.filter = 'blur(30px)'; 
-                    ctx.globalAlpha = 0.6;
-                    ctx.globalCompositeOperation = 'lighter'; // 光線疊加效果
-                    
-                    // 畫出模糊的照片作為背景光
-                    const w = data.img.width * data.scale;
-                    const h = data.img.height * data.scale;
-                    
-                    // 限制光暈範圍
-                    ctx.beginPath();
-                    ctx.rect(x, padding, photoSize, photoSize);
-                    ctx.clip();
-                    ctx.drawImage(data.img, x + data.x, padding + data.y, w, h);
-                    
-                    ctx.restore();
-                });
-            }
+            const totalWidth = imagesData.length * (photoSize + gap) + gap + 100;
 
-            // --- C. 底片本體 ---
-            // 黑色長條
-            ctx.fillStyle = isProjection ? "rgba(10, 10, 10, 0.85)" : "#111";
-            roundRect(ctx, 0, 0, totalFilmWidth, filmHeight, 5, true, false);
+            // 1. 膠捲黑底
+            ctx.fillStyle = "#151515";
+            // 畫長條，左邊稍微延伸進底片殼
+            roundRect(ctx, -20, 0, totalWidth, filmHeight, 2, true, false);
 
-            // 齒孔 (Sprockets)
-            ctx.fillStyle = "#fff";
-            const numHoles = Math.floor(totalFilmWidth / 35);
+            // 2. 齒孔 (Sprockets)
+            ctx.fillStyle = "#e0e0e0";
+            const numHoles = Math.floor(totalWidth / 30);
             for (let k = 0; k < numHoles; k++) {
-                const hx = 20 + k * 35;
-                // 上齒孔
-                roundRect(ctx, hx, 15, 20, 14, 4, true, false);
-                // 下齒孔
-                roundRect(ctx, hx, filmHeight - 29, 20, 14, 4, true, false);
+                const hx = k * 30 - 10;
+                // 只有當齒孔在底片殼右邊才畫 (模擬從殼裡出來)
+                // 底片殼口大約在 x=0 的位置 (因為我們 translate 了)
+                if (filmOffsetX + hx > 220) { 
+                     // 這裡的邏輯是: 絕對位置 > 殼的右緣
+                     // 簡化: 畫全部，最後用殼蓋住
+                }
+                roundRect(ctx, hx, 15, 18, 12, 2, true, false);
+                roundRect(ctx, hx, filmHeight - 27, 18, 12, 2, true, false);
             }
 
-            // --- D. 照片繪製 ---
+            // 3. 照片內容
             imagesData.forEach((data, i) => {
                 const x = i * (photoSize + gap) + 50;
                 
                 ctx.save();
                 
-                // 1. 畫相框區域 (Clip Mask)
+                // 裁切框
                 ctx.beginPath();
                 ctx.rect(x, padding, photoSize, photoSize);
                 ctx.clip();
 
-                // 2. 處理投影模式的透明度
+                // 投影模式：照片本體稍微變亮
                 if (isProjection) {
-                    ctx.globalAlpha = 0.8; // 照片半透明
-                    ctx.globalCompositeOperation = 'screen'; // 讓照片看起來像發光的膠片
+                    ctx.globalCompositeOperation = 'screen';
+                    ctx.globalAlpha = 0.9;
                 }
 
-                // 3. 畫圖 (根據個別的 x, y 偏移)
                 const w = data.img.width * data.scale;
                 const h = data.img.height * data.scale;
                 ctx.drawImage(data.img, x + data.x, padding + data.y, w, h);
 
-                // 如果在調整模式，畫個紅框提示
+                // 紅色調整框
                 if (isAdjustMode) {
-                    ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
+                    ctx.strokeStyle = "#ff3333";
                     ctx.lineWidth = 4;
                     ctx.strokeRect(x, padding, photoSize, photoSize);
                 }
 
                 ctx.restore();
 
-                // 編號
-                ctx.fillStyle = "#fff";
-                ctx.font = "16px Arial";
-                ctx.fillText(`${i+1}`, x + photoSize/2 - 5, filmHeight - 10);
-                
-                // 裝飾性文字
-                ctx.fillStyle = "rgba(255,255,255,0.5)";
-                ctx.font = "12px Arial";
-                ctx.fillText("FUJI RVP", x, 45);
+                // 文字
+                if(!isProjection) {
+                    ctx.fillStyle = "#888";
+                    ctx.font = "14px Arial";
+                    ctx.fillText(`${i+1}A`, x + photoSize/2, filmHeight - 8);
+                }
             });
 
-            ctx.restore(); // 恢復座標系
+            ctx.restore(); // 恢復座標系，結束膠捲繪製
 
-            // --- E. 最後繪製底片殼 (蓋在膠捲上面) ---
-            drawCanister();
-
-            // 若沒有照片的提示
-            if (imagesData.length === 0) {
-                ctx.fillStyle = isProjection ? "#555" : "#aaa";
+            // --- C. 底片殼圖層 (The Canister) - 永遠蓋在最上面 ---
+            // 位置固定在畫面左側
+            drawRealisticCanister(120, cy); 
+            
+            // 如果沒照片
+            if(imagesData.length === 0) {
+                ctx.fillStyle = isProjection ? "#666" : "#aaa";
                 ctx.font = "30px Gaegu";
                 ctx.textAlign = "center";
-                ctx.fillText("Please Upload Photos 📷", canvas.width/2 + 100, canvas.height/2);
+                ctx.fillText("Waiting for film...", canvas.width/2 + 100, cy);
             }
         }
 
-        // 繪製底片殼的函式
-        function drawCanister() {
-            const cx = 100; // 殼的位置固定在畫面左側
-            const cy = (canvas.height - filmHeight) / 2 + filmHeight/2; // 垂直置中
-            const h = filmHeight + 20;
-            const w = 80;
-
+        // --- 繪製立體底片殼 ---
+        function drawRealisticCanister(cx, cy) {
+            const w = canisterWidth;
+            const h = filmHeight + 40;
+            const topY = cy - h/2;
+            
             ctx.save();
-            // 殼身 (黃色)
-            ctx.fillStyle = "#facc15"; 
-            ctx.shadowColor = "rgba(0,0,0,0.3)";
-            ctx.shadowBlur = 10;
-            roundRect(ctx, cx - w/2, cy - h/2, w, h, 5, true, false);
             
-            // 殼標籤
+            // 陰影 (讓它看起來浮在底片上)
+            ctx.shadowColor = "rgba(0,0,0,0.5)";
+            ctx.shadowBlur = 20;
+            ctx.shadowOffsetX = 10;
+
+            // 1. 殼身漸層 (金屬黃質感)
+            const grad = ctx.createLinearGradient(cx - w/2, 0, cx + w/2, 0);
+            grad.addColorStop(0, "#b8860b"); // 暗金
+            grad.addColorStop(0.2, "#f1c40f"); // 亮黃
+            grad.addColorStop(0.5, "#fcd670"); // 高光
+            grad.addColorStop(0.8, "#f1c40f");
+            grad.addColorStop(1, "#b8860b");
+
+            // 畫圓柱體
+            ctx.fillStyle = grad;
+            ctx.fillRect(cx - w/2, topY, w, h);
+
+            // 2. 標籤 (黑色矩形)
             ctx.fillStyle = "#111";
-            ctx.fillRect(cx - w/2 + 10, cy - h/2 + 40, w - 20, h - 80);
-            
-            // 殼蓋子 (上下黑色)
+            ctx.fillRect(cx - w/2 + 5, topY + 40, w - 10, h - 80);
+
+            // 3. 上下蓋 (黑色塑膠質感)
             ctx.fillStyle = "#222";
+            
             // 上蓋
             ctx.beginPath();
-            ctx.ellipse(cx, cy - h/2, w/2 + 2, 10, 0, 0, Math.PI * 2);
+            ctx.ellipse(cx, topY, w/2, 12, 0, 0, Math.PI * 2);
             ctx.fill();
-            ctx.fillStyle = "#444"; // 凸起
+            // 上蓋凸起
+            const knobGrad = ctx.createLinearGradient(cx-15, 0, cx+15, 0);
+            knobGrad.addColorStop(0, "#444");
+            knobGrad.addColorStop(0.5, "#888"); // 金屬反光
+            knobGrad.addColorStop(1, "#444");
+            ctx.fillStyle = knobGrad;
             ctx.beginPath();
-            ctx.ellipse(cx, cy - h/2 - 5, 15, 5, 0, 0, Math.PI * 2);
+            ctx.rect(cx - 10, topY - 15, 20, 15);
             ctx.fill();
 
             // 下蓋
             ctx.fillStyle = "#222";
             ctx.beginPath();
-            ctx.ellipse(cx, cy + h/2, w/2 + 2, 10, 0, 0, Math.PI * 2);
+            ctx.ellipse(cx, topY + h, w/2, 12, 0, 0, Math.PI * 2);
             ctx.fill();
 
-            // LOGO
-            ctx.fillStyle = "#facc15";
-            ctx.font = "bold 20px Arial";
-            ctx.textAlign = "center";
+            // 4. 出片口 (Slit) - 關鍵的視覺細節
+            // 在右側畫一個黑色的細長條，模擬底片出來的地方
+            ctx.fillStyle = "#000";
+            ctx.fillRect(cx + w/2 - 5, cy - filmHeight/2 - 2, 8, filmHeight + 4);
+
+            // 5. 標籤文字
             ctx.save();
             ctx.translate(cx, cy);
-            ctx.rotate(Math.PI / 2);
-            ctx.fillText("MEMORIES", 0, 5);
+            ctx.rotate(-Math.PI / 2); // 轉90度
+            ctx.font = "bold 24px Arial";
+            ctx.fillStyle = "#f1c40f";
+            ctx.textAlign = "center";
+            ctx.fillText("MEMORIES 400", 0, 8);
             ctx.restore();
 
             ctx.restore();
         }
 
-        // 3. 互動邏輯 (核心修改)
+        // 3. 互動邏輯
         container.addEventListener('mousedown', e => startDrag(e.clientX, e.clientY));
         container.addEventListener('touchstart', e => startDrag(e.touches[0].clientX, e.touches[0].clientY));
 
@@ -364,47 +441,40 @@
         window.addEventListener('touchend', endDrag);
 
         function startDrag(x, y) {
+            if(isRecording) return; // 錄影中禁止手動干擾
             isDragging = true;
             lastX = x;
             lastY = y;
+            container.style.cursor = isAdjustMode ? "grabbing" : "grabbing";
         }
 
         function onDrag(x, y) {
             if (!isDragging) return;
-            
             const dx = x - lastX;
             const dy = y - lastY;
             lastX = x;
             lastY = y;
 
             if (isAdjustMode) {
-                // --- 調整照片模式 ---
-                // 找出滑鼠底下的那張照片
-                // 我們需要反推座標： MouseX -> FilmOffset -> Index
+                // 調整照片位置
                 const relativeX = x - filmOffsetX; 
-                // 每個單位寬度
-                const unitWidth = photoSize + gap;
-                const index = Math.floor((relativeX - 50) / unitWidth);
-
+                const index = Math.floor((relativeX - 50) / (photoSize + gap));
                 if (index >= 0 && index < imagesData.length) {
-                    // 更新該照片的偏移量
-                    const imgData = imagesData[index];
-                    imgData.x += dx;
-                    imgData.y += dy;
-                    // 這裡不加邊界限制，讓使用者自由拉，比較靈活
+                    imagesData[index].x += dx;
+                    imagesData[index].y += dy;
                 }
             } else {
-                // --- 一般捲動模式 ---
+                // 拖曳膠捲
                 filmOffsetX += dx;
-                
-                // 限制不要把底片完全拉出畫面外
-                if (filmOffsetX > 300) filmOffsetX = 300; // 左邊界 (殼)
+                // 限制最左邊 (不能把膠捲尾巴都拉出來)
+                if (filmOffsetX > 250) filmOffsetX = 250;
             }
             draw();
         }
 
         function endDrag() {
             isDragging = false;
+            container.style.cursor = isAdjustMode ? "move" : "grab";
         }
 
         // 4. 按鈕功能
@@ -413,13 +483,9 @@
             isAdjustMode = !isAdjustMode;
             adjustBtn.classList.toggle('active');
             container.classList.toggle('editing-mode');
-            if(isAdjustMode) {
-                statusText.innerText = "直接拖曳照片調整位置 / Drag photo inside frame";
-                adjustBtn.innerText = "完成調整 (Done)";
-            } else {
-                statusText.innerText = "拖曳膠捲 / Drag film strip";
-                adjustBtn.innerText = "🖐️ 2. 調整相片位置";
-            }
+            statusText.innerText = isAdjustMode ? 
+                "按住照片移動調整 / Drag photo to adjust" : 
+                "左右拖曳膠捲 / Drag to scroll";
             draw();
         });
 
@@ -430,19 +496,21 @@
         });
 
         document.getElementById('resetBtn').addEventListener('click', () => {
-            filmOffsetX = 220;
+            filmOffsetX = 250;
             draw();
         });
 
-        // 5. 匯出影片 (修正速度)
-        document.getElementById('recordBtn').addEventListener('click', () => {
-            if(imagesData.length === 0) return alert("還沒上傳照片喔！");
+        // 5. 錄製與自動播放
+        const recordBtn = document.getElementById('recordBtn');
+        recordBtn.addEventListener('click', () => {
+            if(imagesData.length === 0) return alert("請先上傳照片！");
             
-            // 強制關閉調整模式
-            isAdjustMode = false;
-            adjustBtn.classList.remove('active');
-            draw();
+            if(isRecording) return; // 避免重複點擊
+            isRecording = true;
+            recordBtn.innerText = "錄製中...";
+            recordBtn.classList.add('active');
 
+            // 準備錄製
             const stream = canvas.captureStream(30);
             const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
             const chunks = [];
@@ -453,31 +521,40 @@
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `film_roll_${Date.now()}.webm`;
+                a.download = `cinema_film_${Date.now()}.webm`;
                 a.click();
+                
+                isRecording = false;
+                recordBtn.innerText = "🔴 錄製影片";
+                recordBtn.classList.remove('active');
+                alert("錄製完成！");
             };
 
-            // 動畫設定
-            filmOffsetX = 300; // 回到起點
-            const endX = -(imagesData.length * (photoSize + gap)) + canvas.width/2;
-            const speed = 2; // 速度調慢 (原本是5)
-            
             recorder.start();
+
+            // 重置位置
+            filmOffsetX = 250;
             
-            function recordLoop() {
-                filmOffsetX -= speed;
+            // 計算終點
+            const endX = -(imagesData.length * (photoSize + gap)) + canvas.width/2;
+
+            function animate() {
+                if (!isRecording) return;
+
+                // 使用使用者設定的速度
+                filmOffsetX -= autoScrollSpeed; 
                 draw();
+
                 if (filmOffsetX > endX) {
-                    requestAnimationFrame(recordLoop);
+                    requestAnimationFrame(animate);
                 } else {
                     recorder.stop();
-                    alert("匯出完成！");
                 }
             }
-            recordLoop();
+            animate();
         });
 
-        // 輔助形狀
+        // 輔助函式
         function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
             ctx.beginPath();
             ctx.moveTo(x + radius, y);
