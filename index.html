@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Film Roll Memory</title>
+    <link href="https://fonts.googleapis.com/css2?family=Gaegu:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #fcf6f0; /* 預設米色背景 */
+            font-family: 'Gaegu', cursive; /* 韓系字體 */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            transition: background-color 0.5s;
+        }
+
+        /* 投影模式下的背景變暗或變白，視需求調整，這裡設為暗室感覺以便投影顯眼 */
+        body.projection-mode {
+            background-color: #f0f0f0; 
+        }
+
+        header {
+            margin-top: 20px;
+            text-align: center;
+            z-index: 10;
+        }
+
+        h1 {
+            color: #555;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px 20px;
+            border-radius: 30px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            align-items: center;
+        }
+
+        button, label {
+            font-family: 'Gaegu', cursive;
+            font-size: 1.2rem;
+            padding: 8px 16px;
+            border: 2px solid #555;
+            background: white;
+            cursor: pointer;
+            border-radius: 20px;
+            transition: all 0.2s;
+            color: #333;
+        }
+
+        button:hover, label:hover {
+            background: #ffe0e0;
+            transform: scale(1.05);
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        /* Canvas 容器 */
+        #canvas-container {
+            flex-grow: 1;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            cursor: grab;
+        }
+
+        #canvas-container:active {
+            cursor: grabbing;
+        }
+
+        canvas {
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: opacity 0.5s;
+        }
+
+        /* 提示文字 */
+        .tip {
+            position: absolute;
+            bottom: 20px;
+            color: #888;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>My Film Memories ☁️</h1>
+        <div class="controls">
+            <label for="upload">
+                📷 上傳照片 (Upload)
+                <input type="file" id="upload" multiple accept="image/*">
+            </label>
+            <button id="toggleMode">✨ 投影模式 (Projection)</button>
+            <button id="recordBtn">🎥 錄製影片 (Export)</button>
+        </div>
+    </header>
+
+    <div id="canvas-container">
+        <canvas id="filmCanvas"></canvas>
+    </div>
+
+    <div class="tip">拖曳畫面移動膠捲 / Drag to scroll</div>
+
+    <script>
+        const canvas = document.getElementById('filmCanvas');
+        const ctx = canvas.getContext('2d');
+        const uploadInput = document.getElementById('upload');
+        const toggleBtn = document.getElementById('toggleMode');
+        const recordBtn = document.getElementById('recordBtn');
+        const container = document.getElementById('canvas-container');
+
+        // 設定參數
+        let images = [];
+        let isProjection = false;
+        let offsetX = 100; // 膠捲水平位置
+        let isDragging = false;
+        let startX = 0;
+        
+        // 膠捲外觀設定
+        const filmHeight = 400;
+        const photoSize = 280; // 照片大小
+        const gap = 40; // 照片間距
+        const sprocketSize = 15; // 齒孔大小
+        const filmPadding = 60; // 黑邊高度
+        
+        // 初始化 Canvas 大小
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = filmHeight + 100; // 預留陰影空間
+            draw();
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // 1. 處理圖片上傳
+        uploadInput.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            if(files.length === 0) return;
+
+            // 讀取所有圖片
+            let loadedCount = 0;
+            images = []; // 清空舊圖
+            
+            files.forEach(file => {
+                const img = new Image();
+                img.src = URL.createObjectURL(file);
+                img.onload = () => {
+                    loadedCount++;
+                    // 簡單裁切成正方形或維持比例 (這裡簡化為儲存原圖物件)
+                    images.push(img);
+                    if (loadedCount === files.length) {
+                        offsetX = canvas.width / 2 - 200; // 重置位置到中間
+                        draw();
+                    }
+                };
+            });
+        });
+
+        // 2. 核心繪圖函數
+        function draw() {
+            // 清空畫布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (images.length === 0) {
+                // 尚未上傳時的提示
+                ctx.fillStyle = "#aaa";
+                ctx.font = "30px Gaegu";
+                ctx.textAlign = "center";
+                ctx.fillText("Please upload photos first...", canvas.width/2, canvas.height/2);
+                return;
+            }
+
+            const totalWidth = images.length * (photoSize + gap) + 200; // 膠捲總長
+            
+            // 儲存當前狀態
+            ctx.save();
+            
+            // 移動畫布位置 (模擬拖曳)
+            ctx.translate(offsetX, 50); // y=50 讓膠捲置中一點
+
+            // --- A. 繪製投影光暈 (僅在投影模式下) ---
+            if (isProjection) {
+                // 模擬投射在牆上的模糊光影
+                images.forEach((img, i) => {
+                    const x = 100 + i * (photoSize + gap);
+                    ctx.save();
+                    ctx.shadowColor = "rgba(0, 0, 0, 0.2)"; // 投影顏色
+                    ctx.shadowBlur = 40; // 模糊程度
+                    ctx.globalAlpha = 0.4; // 淡淡的影子
+                    // 這裡畫一個與照片同大小的矩形作為影子，或者畫圖本身
+                    ctx.drawImage(img, x, filmPadding, photoSize, photoSize);
+                    ctx.restore();
+                });
+            }
+
+            // --- B. 繪製黑色膠捲底色 ---
+            ctx.fillStyle = isProjection ? "rgba(20, 20, 20, 0.85)" : "#1a1a1a"; // 投影模式下膠捲稍微透明
+            // 圓角矩形
+            roundRect(ctx, 0, 0, totalWidth, filmHeight, 10, true, false);
+
+            // --- C. 繪製上下齒孔 (Sprockets) ---
+            ctx.fillStyle = "#fff";
+            const numHoles = Math.floor(totalWidth / 30);
+            for (let i = 0; i < numHoles; i++) {
+                const hx = 20 + i * 30;
+                // 上排
+                ctx.fillRect(hx, 15, 18, 12);
+                // 下排
+                ctx.fillRect(hx, filmHeight - 27, 18, 12);
+            }
+
+            // --- D. 繪製照片 ---
+            images.forEach((img, i) => {
+                const x = 100 + i * (photoSize + gap);
+                
+                // 裁切並繪製照片
+                ctx.save();
+                
+                // 設定裁切區域 (照片格)
+                ctx.beginPath();
+                ctx.rect(x, filmPadding, photoSize, photoSize);
+                ctx.clip();
+
+                // 投影模式：照片半透明
+                if (isProjection) {
+                    ctx.globalAlpha = 0.7; 
+                    ctx.globalCompositeOperation = 'screen'; // 混合模式讓照片看起來像發光
+                }
+
+                // 繪製圖片 (Cover 模式演算法簡化版)
+                const scale = Math.max(photoSize / img.width, photoSize / img.height);
+                const w = img.width * scale;
+                const h = img.height * scale;
+                const dx = x + (photoSize - w) / 2;
+                const dy = filmPadding + (photoSize - h) / 2;
+                
+                ctx.drawImage(img, dx, dy, w, h);
+                
+                ctx.restore();
+
+                // 照片編號 (裝飾用)
+                ctx.fillStyle = "orange";
+                ctx.font = "20px Gaegu";
+                ctx.fillText(`No.${i+1}`, x + 10, filmHeight - 35);
+            });
+
+            // 膠捲頭尾文字
+            ctx.fillStyle = "white";
+            ctx.font = "30px Gaegu";
+            ctx.fillText("START", 20, filmHeight / 2 + 10);
+            ctx.fillText("END", totalWidth - 80, filmHeight / 2 + 10);
+
+            ctx.restore();
+        }
+
+        // 輔助函式：畫圓角矩形
+        function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
+            if (typeof stroke === 'undefined') { stroke = true; }
+            if (typeof radius === 'undefined') { radius = 5; }
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+            if (stroke) { ctx.stroke(); }
+            if (fill) { ctx.fill(); }
+        }
+
+        // 3. 拖曳互動邏輯
+        container.addEventListener('mousedown', e => {
+            isDragging = true;
+            startX = e.clientX - offsetX;
+        });
+        
+        container.addEventListener('mousemove', e => {
+            if (!isDragging) return;
+            e.preventDefault();
+            offsetX = e.clientX - startX;
+            draw();
+        });
+
+        window.addEventListener('mouseup', () => isDragging = false);
+
+        // 手機觸控支援
+        container.addEventListener('touchstart', e => {
+            isDragging = true;
+            startX = e.touches[0].clientX - offsetX;
+        });
+        container.addEventListener('touchmove', e => {
+            if (!isDragging) return;
+            offsetX = e.touches[0].clientX - startX;
+            draw();
+        });
+        window.addEventListener('touchend', () => isDragging = false);
+
+        // 4. 切換模式
+        toggleBtn.addEventListener('click', () => {
+            isProjection = !isProjection;
+            document.body.classList.toggle('projection-mode');
+            draw();
+        });
+
+        // 5. 錄製影片 (簡易版)
+        recordBtn.addEventListener('click', () => {
+            if (images.length === 0) return alert("請先上傳照片！");
+            
+            alert("開始錄製...膠捲將自動捲動");
+            const stream = canvas.captureStream(30); // 30 FPS
+            const recorder = new MediaRecorder(stream);
+            const chunks = [];
+
+            recorder.ondataavailable = e => chunks.push(e.data);
+            recorder.onstop = () => {
+                const blob = new Blob(chunks, { type: 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'my_film_roll.webm';
+                a.click();
+                alert("錄製完成！影片已下載");
+            };
+
+            recorder.start();
+
+            // 自動動畫邏輯
+            let speed = 5;
+            let currentX = 0;
+            const endX = -(images.length * (photoSize + gap)); // 估算終點
+            
+            function animateScroll() {
+                offsetX -= speed;
+                draw();
+                if (offsetX > endX) {
+                    requestAnimationFrame(animateScroll);
+                } else {
+                    recorder.stop(); // 停止錄製
+                    offsetX = 100; // 回到原點
+                    draw();
+                }
+            }
+            
+            // 重置位置並開始
+            offsetX = canvas.width; 
+            animateScroll();
+        });
+
+        // 初始繪製
+        draw();
+    </script>
+</body>
+</html>
